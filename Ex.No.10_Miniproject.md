@@ -1,169 +1,316 @@
-# Ex.No: 9  Implementation of RollarBall Design using Reinforcement Learning 
-### DATE: 20/03/2026                                                                            
-### REGISTER NUMBER: 212224240117
+# Ex.No: 10  Implementation of Flappy bird game
+### DATE:22/3/26                                                                        
+### REGISTER NUMBER : 212224240117
 ### AIM: 
-To write a program to design RollerBall and train the Rollerbal by Reinforcement learning  in Unity 
-### Installation Required 
-```
-1.Check sytem have python 3.10.0  ( if any higher version then uninstall and install python3.10.0)
-2. Open commandprompt and Create and activate Python virtualenv by
-     python -m venv venv 
-     venv\Scripts\activate
-3. install the packages 
-   pip install numpy==1.23.5 scipy==1.10.1 h5py==3.8.0 protobuf==3.20.*
-4. install ML agents by 
-   pip install mlagents==0.28.0
-5. install torch by 
-  pip install torch torchvision torchaudio
-6. Check mlagent version and check all the main options that you can use when launching the Python trainer by 
-pip show mlagents 
-mlagents-learn --help
-```
+To develop a game flappy bird in Unity 
 ### Algorithm:
 ```
-1.Create a new 3D Unity project
-2.Create a plane → Right-click Hierarchy > 3D Object > Plane
-3.Create an Agent (Cube)
-    Select-Gameobject->3D Object → Cube → Rename to Agent
-5. Add Rigidbody (disable gravity if needed) to Agent ( by Inspector window- Adcomponent->physics->Rigidbody)
-6. Create a Target (Sphere)
-   Select-Gameobject-> 3D Object → Sphere → Rename to Target
-7.Create an empty GameObject → Academy (to reset Agent and Target positions)
-8.Install ml-agents in unity by window-packagemanager-Packageaddbyname=> com.unity.ml-agents => click install
-9.Create a new script in Project window, name it as RollerAgent.cs and type the script
-10. Attach the script to Agent
-11. In Agent inspector window, add Rolleragent script variable Max step as 10,Rbody as AgentRigid body ,Target transform as Target and force multiplier 10  
-12. Add the Behavior Parameters component to your Agent
-    Addcomponent->ML Agents -> Behavior Parameters and set the follwing 
-    Behavior Name: RollerBallBehavior
-    Vector Observation: 8 (4 for agent pos + 3 for target pos + 1 for velocity), 
-    Action Space: Continuous (2)
-12. Add the Decision requestor
- Addcomponent->ML Agents -> Decision Requestor ->set decision period 5 
-13. In command prompt, Run the command to start ML agents to learn the Unity 
-      mlagents-learn "C:\Users\umara\rollerball-udemy\Config\Rollerball.yaml" --run-id=RollerBall_002 --train --no-graphics
-   Note "C:\Users\umara\rollerball-udemy\Config\Rollerball.yaml" change it by your file path where yaml file is located
-14. In unity start play button and see the output of roller ball
-15.Run tensor board in command prompt
-tensorboard --logdir results
-16 Get the results by running the localhost on specific port ( shown in tensorboard)
+Player.cs
+1. Initialize SpriteRenderer component.
+2. Start sprite animation loop every 0.15 seconds.
+3. On enabling the player:
+      a. Reset vertical position to 0.
+      b. Reset movement direction to zero.
+4. Every frame (Update):
+      a. If space key or left mouse button pressed, set upward movement direction.
+      b. Apply gravity to the vertical direction.
+      c. Update player position based on direction.
+      d. Tilt the player based on vertical movement speed.
+5. Animate player sprite by cycling through sprite frames.
+6. On collision with:
+      a. Obstacle tag → trigger game over.
+      b. Scoring tag → increase score.
+```
+```
+GameManager.cs
+1. On awake:
+    a. Ensure singleton instance of the game manager.
+2. On start:
+    a. Pause the game (stop time, disable player controls).
+3. Pause() method:
+    a. Set game time scale to 0 (freeze game).
+    b. Disable player controls.
+4. Play() method:
+    a. Reset score to zero and update UI.
+    b. Hide play button and game over UI.
+    c. Enable player controls and start game (set time scale to 1).
+    d. Find all existing pipes and destroy them to reset obstacles.
+5. GameOver() method:
+    a. Show play button and game over UI.
+    b. Pause the game.
+6. IncreaseScore() method:
+      a. Increment score and update UI.
+```
+```
+Parallax.cs
+1. On awake:
+    a. Get MeshRenderer component of the background.
+2. Every frame (Update):
+    b. Continuously move the texture offset horizontally to create parallax scrolling effect.
+```
+```
+Pipes.cs
+1. On start:
+    a. Calculate left boundary off-screen for pipe destruction.
+2. Position top pipe upwards by half the gap.
+    a. Position bottom pipe downwards by half the gap.
+3. Every frame (Update):
+    a. Move the pipe leftwards by speed.
+    b. If pipe moves beyond left boundary, destroy the pipe object.
+```
+```
+Spawner.cs
+1. When enabled:
+    a. Start repeatedly invoking the Spawn() method at a fixed spawn rate.
+2. When disabled:
+    a. Cancel any repeating spawn invocations.
+3. Spawn() method:
+    a. Instantiate a new pipe prefab at the spawner's position.
+    b. Randomly adjust the vertical position of the pipe within min and max height.
 ```  
 ### Program:
-```
-1. File : RollerAgent.cs 
-
+Player.cs
+```cs
 using UnityEngine;
-using Unity.MLAgents;
-using Unity.MLAgents.Sensors;
-using Unity.MLAgents.Actuators;
 
-public class RollerAgent : Agent
+public class Player : MonoBehaviour
 {
-    public Rigidbody rBody;
-    public Transform targetTransform;
-    public float forceMultiplier = 10f;
+    public Sprite[] sprites;
+    public float strength = 5f;
+    public float gravity = -9.81f;
+    public float tilt = 5f;
 
-    public override void Initialize()
+    private SpriteRenderer spriteRenderer;
+    private Vector3 direction;
+    private int spriteIndex;
+
+    private void Awake()
     {
-        if (rBody == null) rBody = GetComponent<Rigidbody>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
     }
 
-    public override void OnEpisodeBegin()
+    private void Start()
     {
-        // Reset agent velocity and position
-        rBody.velocity = Vector3.zero;
-        rBody.angularVelocity = Vector3.zero;
-        transform.localPosition = new Vector3(0, 0.5f, 0);
-
-        // Move target to a random location on the plane
-        float range = 3.0f;
-        targetTransform.localPosition = new Vector3(Random.Range(-range, range), 0.5f, Random.Range(-range, range));
+        InvokeRepeating(nameof(AnimateSprite), 0.15f, 0.15f);
     }
 
-    public override void CollectObservations(VectorSensor sensor)
+    private void OnEnable()
     {
-        // Target position (3 floats)
-        sensor.AddObservation(targetTransform.localPosition);
-
-        // Agent position (3 floats)
-        sensor.AddObservation(transform.localPosition);
-
-        // Agent velocity (2 floats: x,z)
-        sensor.AddObservation(rBody.velocity.x);
-        sensor.AddObservation(rBody.velocity.z);
-        // -> total = 3 + 3 + 2 = 8
+        Vector3 position = transform.position;
+        position.y = 0f;
+        transform.position = position;
+        direction = Vector3.zero;
     }
 
-    public override void OnActionReceived(ActionBuffers actions)
+    private void Update()
     {
-        // Continuous actions: [0] = moveX, [1] = moveZ
-        float moveX = Mathf.Clamp(actions.ContinuousActions[0], -1f, 1f);
-        float moveZ = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
-
-        Vector3 controlSignal = new Vector3(moveX, 0, moveZ);
-        rBody.AddForce(controlSignal * forceMultiplier);
-
-        // Reward shaping
-        float distanceToTarget = Vector3.Distance(transform.localPosition, targetTransform.localPosition);
-
-        // If agent reaches target -> give reward and end episode
-        if (distanceToTarget < 1.5f)
-        {
-            SetReward(1.0f);
-            EndEpisode();
+        if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)) {
+            direction = Vector3.up * strength;
         }
 
-        // If falls off the plane -> negative reward and end episode
-        if (transform.localPosition.y < -1f)
-        {
-            SetReward(-1.0f);
-            EndEpisode();
-        }
+        // Apply gravity and update the position
+        direction.y += gravity * Time.deltaTime;
+        transform.position += direction * Time.deltaTime;
 
-        // Small time penalty to encourage speed (optional)
-        AddReward(-1f / MaxStep);
+        // Tilt the bird based on the direction
+        Vector3 rotation = transform.eulerAngles;
+        rotation.z = direction.y * tilt;
+        transform.eulerAngles = rotation;
     }
 
-    // For debugging: map keyboard input to actions
-    public override void Heuristic(in ActionBuffers actionsOut)
+    private void AnimateSprite()
     {
-        var continuous = actionsOut.ContinuousActions;
-        continuous[0] = Input.GetAxis("Horizontal");
-        continuous[1] = Input.GetAxis("Vertical");
+        spriteIndex++;
+
+        if (spriteIndex >= sprites.Length) {
+            spriteIndex = 0;
+        }
+
+        if (spriteIndex < sprites.Length && spriteIndex >= 0) {
+            spriteRenderer.sprite = sprites[spriteIndex];
+        }
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.gameObject.CompareTag("Obstacle")) {
+            GameManager.Instance.GameOver();
+        } else if (other.gameObject.CompareTag("Scoring")) {
+            GameManager.Instance.IncreaseScore();
+        }
+    }
+
+}
+```
+GameManager.cs
+```cs
+using UnityEngine;
+using UnityEngine.UI;
+
+[DefaultExecutionOrder(-1)]
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+
+     [SerializeField]private Player player;
+     [SerializeField]private Spawner spawner;
+     [SerializeField]private Text scoreText;
+     [SerializeField]private GameObject playButton;
+     [SerializeField]private GameObject gameOver;
+
+    public int score { get; private set; } = 0;
+
+    private void Awake()
+    {
+        if (Instance != null) {
+            DestroyImmediate(gameObject);
+        } else {
+            Instance = this;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) {
+            Instance = null;
+        }
+    }
+
+    private void Start()
+    {
+        Pause();
+    }
+
+    public void Pause()
+    {
+        Time.timeScale = 0f;
+        player.enabled = false;
+    }
+
+    public void Play()
+{
+    score = 0;
+    scoreText.text = score.ToString();
+
+    playButton.SetActive(false);
+    gameOver.SetActive(false);
+
+    Time.timeScale = 1f;
+    player.enabled = true;
+
+    Pipes[] pipes = FindObjectsByType<Pipes>(FindObjectsSortMode.None);
+
+    for (int i = 0; i < pipes.Length; i++) {
+        Destroy(pipes[i].gameObject);
     }
 }
 
-2. Create a "Rollerball.yaml" file (create a Config folder inside your project ) attach the following code 
+    public void GameOver()
+    {
+        playButton.SetActive(true);
+        gameOver.SetActive(true);
 
-behaviors:
-  RollerBallBehavior:
-    trainer_type: ppo
-    hyperparameters:
-      batch_size: 1024
-      buffer_size: 10240
-      learning_rate: 3.0e-4
-      beta: 5.0e-3
-      epsilon: 0.2
-      lambd: 0.95
-      num_epoch: 3
-    network_settings:
-      normalize: false
-      hidden_units: 128
-      num_layers: 2
-    reward_signals:
-      extrinsic:
-        gamma: 0.99
-        strength: 1.0
-    max_steps: 500000
-    time_horizon: 64
-    summary_freq: 10000
+        Pause();
+    }
+
+    public void IncreaseScore()
+    {
+        score++;
+        scoreText.text = score.ToString();
+    }
+
+}
 ```
+Parallax.cs
+```cs
+using UnityEngine;
 
+public class Parallax : MonoBehaviour
+{
+    public float animationSpeed = 1f;
+    private MeshRenderer meshRenderer;
+
+    private void Awake()
+    {
+        meshRenderer = GetComponent<MeshRenderer>();
+    }
+
+    private void Update()
+    {
+        meshRenderer.material.mainTextureOffset += new Vector2(animationSpeed * Time.deltaTime, 0);
+    }
+
+}
+
+```
+Pipes.cs
+```cs
+using UnityEngine;
+
+public class Pipes : MonoBehaviour
+{
+    public Transform top;
+    public Transform bottom;
+    public float speed = 5f;
+    public float gap = 3f;
+
+    private float leftEdge;
+
+    private void Start()
+    {
+        leftEdge = Camera.main.ScreenToWorldPoint(Vector3.zero).x - 1f;
+        top.position += Vector3.up * gap / 2;
+        bottom.position += Vector3.down * gap / 2;
+    }
+
+    private void Update()
+    {
+        transform.position += speed * Time.deltaTime * Vector3.left;
+
+        if (transform.position.x < leftEdge) {
+            Destroy(gameObject);
+        }
+    }
+
+}
+```
+Spawner.cs
+```cs
+using UnityEngine;
+
+public class Spawner : MonoBehaviour
+{
+    public GameObject prefab;
+    //public Pipes prefab;
+    public float spawnRate = 1f;
+    public float minHeight = -1f;
+    public float maxHeight = 2f;
+    public float verticalGap = 3f;
+
+    private void OnEnable()
+    {
+        InvokeRepeating(nameof(Spawn), spawnRate, spawnRate);
+    }
+
+    private void OnDisable()
+    {
+        CancelInvoke(nameof(Spawn));
+    }
+
+    private void Spawn()
+    {
+        GameObject pipes = Instantiate(prefab, transform.position, Quaternion.identity);
+        pipes.transform.position += Vector3.up * Random.Range(minHeight, maxHeight);
+    }
+
+}
+```
 ### Output:
+![image](https://github.com/user-attachments/assets/11ed6b27-8603-4d05-866d-e182abc50001)
+![image](https://github.com/user-attachments/assets/bdcddd97-54a2-473f-832a-0e8456b6a0f7)
+![image](https://github.com/user-attachments/assets/383791ab-a488-4f68-b3a0-69c64875c1c7)
 
-<img width="1918" height="1016" alt="image" src="https://github.com/user-attachments/assets/74ac7a17-539b-4283-b8a6-d9ac0f0e32db" />
 
-<img width="1919" height="1027" alt="image" src="https://github.com/user-attachments/assets/33a60a31-6b62-40f6-a088-30151c2b29bd" />
 
 ### Result:
-Thus the AI character was trained using reinforcement learning.
+Thus the game was developed using Unity and it is successfully executed.
